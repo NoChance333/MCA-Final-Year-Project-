@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WSN Web Application</title>
+  
+  <!-- Tailwind CSS & Visualization Libraries (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@1.79.0/dist/umd/lucide.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #030712;
+      color: #f3f4f6;
+      overflow-x: hidden;
+    }
+    
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+    }
+
+    .glass-card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #06b6d4;
+    }
+
+    /* Ensure inputs have high contrast dark background and clear bright text */
+    input[type="number"], input[type="text"] {
+      background-color: #030712 !important;
+      color: #38bdf8 !important;
+      border: 1.5px solid #06b6d4 !important;
+      outline: none !important;
+    }
+    input[type="number"]::-webkit-inner-spin-button, 
+    input[type="number"]::-webkit-outer-spin-button { 
+      filter: invert(0.8);
+      cursor: pointer;
+    }
+
+    #canvas3d-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 580px;
+    }
+    #canvas3d {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #node-tooltip {
+      display: none;
+      position: absolute;
+      pointer-events: none;
+      z-index: 50;
+      transform: translate(-50%, -100%);
+      margin-top: -10px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased bg-slate-950 text-slate-100">
+
+  <!-- TOP APP BAR: MINIMAL & CLEAN -->
+  <header class="glass-panel sticky top-0 z-40 border-b border-slate-800 px-4 py-2 flex items-center justify-between">
+    <div class="flex items-center space-x-2.5">
+      <div class="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
+        <i data-lucide="radio" class="w-4 h-4 text-cyan-400"></i>
+      </div>
+      <h1 class="text-sm font-bold tracking-wider text-white font-mono">
+        WSN WEB APPLICATION
+      </h1>
+    </div>
+
+    <!-- MINIMALIST NODES USERFIELD & START BUTTON -->
+    <div class="flex items-center space-x-2">
+      <div class="flex items-center space-x-2 bg-slate-900/90 px-3 py-1 rounded-lg border border-slate-700 shadow-sm">
+        <label for="input-node-count" class="text-xs font-mono font-medium text-slate-300">Nodes:</label>
+        <input 
+          type="number" 
+          id="input-node-count" 
+          min="10" 
+          max="500" 
+          value="100"
+          placeholder="100"
+          oninput="onNodeTyping(this.value)"
+          onkeydown="if(event.key==='Enter') handleStartClick()"
+          class="w-16 px-2 py-0.5 rounded text-center text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-cyan-400"
+          style="background-color: #030712 !important; color: #38bdf8 !important; border: 1.5px solid #06b6d4 !important; caret-color: #38bdf8 !important;"
+        />
+        <button id="btn-start" onclick="handleStartClick()" class="px-3 py-1 text-xs font-mono rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition shadow-sm flex items-center gap-1.5">
+          <i id="start-icon" data-lucide="play" class="w-3.5 h-3.5"></i>
+          <span id="start-text">START</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- COMPACT LIVE KPI METRICS BAR -->
+  <section class="bg-slate-900/80 border-b border-slate-800/80 px-4 py-1.5">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs font-mono">
+      
+      <div class="bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center justify-between">
+        <span class="text-slate-400 flex items-center gap-1">
+          <i data-lucide="zap" class="w-3.5 h-3.5 text-emerald-400"></i> Energy:
+        </span>
+        <span id="kpi-energy" class="font-bold text-emerald-400 text-sm">8.42 J</span>
+      </div>
+
+      <div class="bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center justify-between">
+        <span class="text-slate-400 flex items-center gap-1">
+          <i data-lucide="activity" class="w-3.5 h-3.5 text-cyan-400"></i> PDR:
+        </span>
+        <span id="kpi-pdr" class="font-bold text-cyan-300 text-sm">98.4 %</span>
+      </div>
+
+      <div class="bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center justify-between">
+        <span class="text-slate-400 flex items-center gap-1">
+          <i data-lucide="gauge" class="w-3.5 h-3.5 text-blue-400"></i> Throughput:
+        </span>
+        <span id="kpi-throughput" class="font-bold text-blue-300 text-sm">318.5 kbps</span>
+      </div>
+
+      <div class="bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center justify-between">
+        <span class="text-slate-400 flex items-center gap-1">
+          <i data-lucide="clock" class="w-3.5 h-3.5 text-purple-400"></i> Latency:
+        </span>
+        <span id="kpi-latency" class="font-bold text-purple-300 text-sm">12.4 ms</span>
+      </div>
+
+      <div class="bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center justify-between">
+        <span class="text-slate-400 flex items-center gap-1">
+          <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-400"></i> Dead Nodes:
+        </span>
+        <span id="kpi-dead" class="font-bold text-emerald-400 text-sm">0 (0.0%)</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- MAIN VIEW: VERTICAL TOP-TO-BOTTOM (3D SIMULATION ON TOP, LARGE STATS ON BOTTOM) -->
+  <main class="flex-1 p-4 flex flex-col space-y-5 w-full max-w-[1600px] mx-auto">
+
+    <!-- TOP SECTION: FULL-WIDTH 3D SIMULATION CANVAS -->
+    <section class="glass-card rounded-xl overflow-hidden relative border border-slate-800 shadow-2xl w-full">
+      <div id="canvas3d-container" class="w-full h-[520px] bg-slate-950 relative">
+        <canvas id="canvas3d"></canvas>
+
+        <!-- LIVE ROUND & PACKETS OVERLAY (TOP LEFT) -->
+        <div class="absolute top-3 left-3 pointer-events-none z-10">
+          <div class="bg-slate-900/90 border border-slate-700/80 px-3 py-1.5 rounded-lg text-xs font-mono shadow-lg flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span class="text-slate-400">Round:</span>
+            <span id="overlay-round" class="font-bold text-white text-sm">#1</span>
+            <span class="text-slate-600">|</span>
+            <span class="text-slate-400">Packets:</span>
+            <span id="overlay-packets" class="font-bold text-cyan-300">28</span>
+          </div>
+        </div>
+
+        <!-- CAMERA VIEW BUTTONS (TOP RIGHT) -->
+        <div class="absolute top-3 right-3 z-10 flex items-center space-x-1.5 bg-slate-900/90 p-1.5 rounded-lg border border-slate-700/80 shadow-lg">
+          <button onclick="setCameraView('orbit')" class="p-1.5 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-300 transition" title="Perspective Orbit">
+            <i data-lucide="orbit" class="w-4 h-4"></i>
+          </button>
+          <button onclick="setCameraView('top')" class="p-1.5 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-300 transition" title="Top-Down 2D">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+          </button>
+          <button onclick="toggleTransmissionRings()" id="btn-toggle-rings" class="p-1.5 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition" title="Toggle 140m Rings">
+            <i data-lucide="radar" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- 3D LEGEND (BOTTOM LEFT) -->
+        <div class="absolute bottom-3 left-3 pointer-events-none z-10 bg-slate-950/85 px-3 py-1.5 rounded-lg text-xs font-mono flex items-center gap-3 border border-slate-800 shadow-md">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span> Base Station (Sink)</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Cluster Head</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> Sensor Mote</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Depleted / Dead</span>
+        </div>
+
+        <!-- HOVER TOOLTIP -->
+        <div id="node-tooltip" class="bg-slate-900 border border-cyan-400 px-3 py-2 rounded-lg text-xs font-mono shadow-2xl min-w-[170px]">
+          <div class="flex justify-between border-b border-slate-700 pb-1 mb-1 font-bold text-cyan-300">
+            <span id="tt-id">Node-1</span>
+            <span id="tt-role" class="text-emerald-400">Sensor Mote</span>
+          </div>
+          <div class="space-y-0.5 text-slate-300 text-[11px]">
+            <div>Energy: <span id="tt-energy" class="font-bold text-emerald-400">9.40 J</span></div>
+            <div>Distance: <span id="tt-dist" class="font-bold text-white">114 m</span></div>
+            <div>Routing: <span id="tt-nexthop" class="font-bold text-cyan-300">CH-1 (42m)</span></div>
+          </div>
+        </div>
+
+        <!-- PINNED CLICK INSPECTOR CARD -->
+        <div id="pinned-node-card" class="absolute bottom-3 right-3 z-20 bg-slate-900/95 border border-cyan-400/60 p-3 rounded-xl text-xs font-mono shadow-2xl hidden min-w-[190px]">
+          <div class="flex items-center justify-between border-b border-slate-700 pb-1 mb-1.5 font-bold text-cyan-300">
+            <span id="pin-id">Node-12</span>
+            <button onclick="closePinnedNode()" class="text-slate-400 hover:text-white p-0.5">✕</button>
+          </div>
+          <div class="space-y-1 text-slate-300 text-[11px]">
+            <div>Role: <span id="pin-role" class="text-emerald-400 font-bold">Sensor Mote</span></div>
+            <div>Cluster: <span id="pin-cluster" class="text-white font-bold">CH-2</span></div>
+            <div>Energy: <span id="pin-energy" class="text-emerald-400 font-bold">9.40 J (94%)</span></div>
+            <div>Dist Sink: <span id="pin-dist" class="text-white font-bold">285 m</span></div>
+            <div>Uplink: <span id="pin-nexthop" class="text-cyan-300 font-bold">CH-2 (38m)</span></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- BOTTOM SECTION: GRAPH-WISE BENCHMARK STATISTICS -->
+    <section class="flex flex-col space-y-4">
+      
+      <!-- SECTION BAR: TITLE & INTERACTIVE ALGORITHM SELECTOR -->
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-2.5 rounded-xl">
+        <div class="flex items-center gap-2">
+          <div class="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
+            <i data-lucide="bar-chart-3" class="w-4 h-4 text-cyan-400"></i>
+          </div>
+          <span class="text-xs font-mono font-bold tracking-wider text-white">
+            STATISTICS & MULTI-ALGORITHM BENCHMARKS
+          </span>
+        </div>
+
+        <!-- ALGORITHM TOGGLE TABS -->
+        <div class="flex items-center gap-1.5 text-xs font-mono">
+          <button id="algo-dqn" onclick="selectAlgorithm('dqn')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/40 hover:bg-cyan-600/50 transition">
+            <span class="w-2.5 h-2.5 rounded bg-cyan-400"></span> DQN+DCAE (Our)
+          </button>
+          <button id="algo-leach" onclick="selectAlgorithm('leach')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-slate-800 transition">
+            <span class="w-2.5 h-2.5 rounded bg-rose-500"></span> LEACH
+          </button>
+          <button id="algo-qlearning" onclick="selectAlgorithm('qlearning')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition">
+            <span class="w-2.5 h-2.5 rounded bg-amber-400"></span> Q-Learning
+          </button>
+          <button id="algo-kmeans" onclick="selectAlgorithm('kmeans')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-purple-300 hover:bg-slate-800 transition">
+            <span class="w-2.5 h-2.5 rounded bg-purple-400"></span> K-Means
+          </button>
+        </div>
+      </div>
+
+      <!-- 6 LARGE DETAILED CARDS IN A 3-COLUMN GRID -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        
+        <!-- CARD 1: ENERGY CONSUMPTION -->
+        <div class="glass-card p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition shadow-lg">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-1.5 text-xs font-mono font-bold text-white">
+              <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i>
+              <span>AVG ENERGY CONSUMPTION (J)</span>
+            </div>
+            <span id="badge-energy" class="text-[10px] font-mono px-2.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30">66.0% Less Energy</span>
+          </div>
+          <div class="w-full h-48 relative">
+            <canvas id="chart-energy"></canvas>
+          </div>
+        </div>
+
+        <!-- CARD 2: PACKET DELIVERY RATIO -->
+        <div class="glass-card p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition shadow-lg">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-1.5 text-xs font-mono font-bold text-white">
+              <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
+              <span>PACKET DELIVERY RATIO (PDR %)</span>
+            </div>
+            <span id="badge-pdr" class="text-[10px] font-mono px-2.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-bold border border-cyan-500/30">2.6x Higher PDR</span>
+          </div>
+          <div class="w-full h-48 relative">
+            <canvas id="chart-pdr"></canvas>
+          </div>
+        </div>
+
+        <!-- CARD 3: AGGREGATE THROUGHPUT -->
+        <div class="glass-card p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition shadow-lg">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-1.5 text-xs font-mono font-bold text-white">
+              <i data-lucide="gauge" class="w-4 h-4 text-blue-400"></i>
+              <span>THROUGHPUT (<span id="th-nodes-label" class="text-cyan-400">100</span>N KBPS)</span>
+            </div>
+            <span id="badge-throughput" class="text-[10px] font-mono px-2.5 py-0.5 rounded bg-blue-500/15 text-blue-300 font-bold border border-blue-500/30">3.7x Higher Data</span>
+          </div>
+          <div class="w-full h-48 relative">
+            <canvas id="chart-throughput"></canvas>
+          </div>
+        </div>
+
+        <!-- CARD 4: NETWORK LIFETIME -->
+        <div class="glass-card p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition shadow-lg">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-1.5 text-xs font-mono font-bold text-white">
+              <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400"></i>
+              <span>LIFETIME (ROUNDS TO FND)</span>
+            </div>
+            <span id="badge-lifetime" class="text-[10px] font-mono px-2.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30">244x Longer Life</span>
+          </div>
+          <div class="w-full h-48 relative">
+            <canvas id="chart-lifetime"></canvas>
+          </div>
+        </div>
+
+        <!-- CARD 5: HOP LATENCY -->
+        <div class="glass-card p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition shadow-lg">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-1.5 text-xs font-mono font-bold text-white">
+              <i data-lucide="clock" class="w-4 h-4 text-purple-400"></i>
+              <span>HOP LATENCY (MS)</span>
+            </div>
+            <span id="badge-latency" class="text-[10px] font-mono px-2.5 py-0.5 rounded bg-purple-500/15 text-purple-300 font-bold border border-purple-500/30">74.5% Lower Delay</span>
+          </div>
+          <div class="w-full h-48 relative">
+            <canvas id="chart-latency"></canvas>
+          </div>
+        </div>
+
+        <!-- CARD 6: MULTI-OBJECTIVE RADAR -->
+        <div class="glass-card p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition shadow-lg">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-1.5 text-xs font-mono font-bold text-white">
+              <i data-lucide="shield-check" class="w-4 h-4 text-purple-400"></i>
+              <span>MULTI-OBJECTIVE RADAR</span>
+            </div>
+            <span class="text-[10px] font-mono px-2.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-bold border border-cyan-500/30">DQN: 96.4 pts Dominance</span>
+          </div>
+          <div class="w-full h-48 relative">
+            <canvas id="chart-radar"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- MODAL: 54 PAPERS MATRIX -->
+  <div id="papers-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="glass-card max-w-4xl w-full max-h-[85vh] rounded-xl flex flex-col overflow-hidden border border-slate-700">
+      <div class="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-900">
+        <h3 class="text-sm font-bold text-white font-mono flex items-center gap-2">
+          <i data-lucide="book-open" class="w-4 h-4 text-cyan-400"></i>
+          54 RESEARCH PAPERS LITERATURE MATRIX
+        </h3>
+        <button onclick="closeModal('papers-modal')" class="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-3 bg-slate-950 flex items-center justify-between gap-3 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <button onclick="filterPapers('all')" class="paper-btn px-2 py-0.5 text-xs font-mono rounded bg-cyan-600 text-white font-bold" data-cat="all">All</button>
+          <button onclick="filterPapers('leach')" class="paper-btn px-2 py-0.5 text-xs font-mono rounded text-slate-400 hover:bg-slate-800" data-cat="leach">LEACH</button>
+          <button onclick="filterPapers('rl')" class="paper-btn px-2 py-0.5 text-xs font-mono rounded text-slate-400 hover:bg-slate-800" data-cat="rl">RL &amp; DQN</button>
+          <button onclick="filterPapers('ae')" class="paper-btn px-2 py-0.5 text-xs font-mono rounded text-slate-400 hover:bg-slate-800" data-cat="ae">Autoencoders</button>
+          <button onclick="filterPapers('ns3')" class="paper-btn px-2 py-0.5 text-xs font-mono rounded text-slate-400 hover:bg-slate-800" data-cat="ns3">NS-3</button>
+        </div>
+        <input type="text" id="paper-search" placeholder="Search author, paper..." oninput="searchPapers(this.value)" class="bg-slate-900 border border-slate-700 text-xs font-mono text-slate-200 px-2 py-1 rounded outline-none w-48">
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3">
+        <table class="w-full text-left text-xs font-mono border-collapse">
+          <thead>
+            <tr class="border-b border-slate-700 text-slate-400">
+              <th class="p-2">Paper Title</th>
+              <th class="p-2">Category</th>
+              <th class="p-2">Algorithm</th>
+              <th class="p-2">Inherent Flaw</th>
+              <th class="p-2">Our Solution</th>
+            </tr>
+          </thead>
+          <tbody id="papers-table-body" class="divide-y divide-slate-800 text-slate-300">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: GUIDE Q&A -->
+  <div id="qa-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="glass-card max-w-2xl w-full max-h-[85vh] rounded-xl flex flex-col overflow-hidden border border-slate-700">
+      <div class="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-900">
+        <h3 class="text-sm font-bold text-white font-mono flex items-center gap-2">
+          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+          GUIDE Q&amp;A DEFENSE CHEAT SHEET
+        </h3>
+        <button onclick="closeModal('qa-modal')" class="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-xs">
+        <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+          <strong class="text-cyan-300">Q: Why did nobody use DQN + Deep Autoencoders together?</strong>
+          <p class="mt-1 text-slate-300">
+            <strong>Answer:</strong> Literature was strictly split. Autoencoder researchers (Fei, Babatunde, Zhang) used AE only for clustering and used static single-hop or Dijkstra to the sink. RL researchers (Kanakis, Padma Priya) used DQN on flat networks or naive Euclidean K-Means. We are the first to unify both into a dual-stage architecture solving spatial distortion (DCAE) and multi-hop routing (DQN) simultaneously.
+          </p>
+        </div>
+
+        <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+          <strong class="text-cyan-300">Q: Why is Energy Efficiency the primary objective?</strong>
+          <p class="mt-1 text-slate-300">
+            <strong>Answer:</strong> Sensors operate on finite batteries in remote fields. When battery exhausts, the node permanently dies, collapsing topology and dropping throughput to zero. Energy efficiency directly determines network survival.
+          </p>
+        </div>
+
+        <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+          <strong class="text-cyan-300">Q: Why does LEACH fail over large terrain?</strong>
+          <p class="mt-1 text-slate-300">
+            <strong>Answer:</strong> LEACH forces Cluster Heads to transmit directly to the base station (500m). RF attenuation follows d⁴ multipath path loss. 1 packet over 500m consumes 0.53 Joules, exhausting battery in 15 rounds. Our DQN constrains hops to &lt;= 140m (d² free space zone, 0.003 J/pkt), saving 170x energy.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION CODE -->
+  <script>
+    if (window.lucide) lucide.createIcons();
+
+    // ==========================================
+    // 1. STATE MANAGEMENT
+    // ==========================================
+    const STATE = {
+      nodeCount: 100,
+      activeAlgo: 'dqn', // 'dqn' | 'leach' | 'qlearning' | 'kmeans'
+      isRunning: false,
+      speed: 2,
+      round: 1,
+      showRings: true,
+      cameraPreset: 'orbit',
+      
+      stats: {
+        dqn: { energy: 8.42, pdr: 98.4, throughput: 318.5, latency: 12.4, deadPercent: 0.0 },
+        leach: { energy: 24.80, pdr: 38.2, throughput: 85.0, latency: 48.6, deadPercent: 78.5 },
+        qlearning: { energy: 14.60, pdr: 82.5, throughput: 210.0, latency: 28.5, deadPercent: 18.0 },
+        kmeans: { energy: 18.20, pdr: 71.8, throughput: 165.0, latency: 22.1, deadPercent: 32.0 }
+      },
+
+      sink: { id: 'sink-0', x: 400, y: 550, z: 15 },
+      clusterHeads: [],
+      nodes: [],
+      activePhotons: []
+    };
+
+    const CLUSTER_COLORS = ['#06b6d4', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#3b82f6'];
+
+    function generateNetworkTopology(count = 100) {
+      STATE.clusterHeads = [];
+      STATE.nodes = [];
+      STATE.activePhotons = [];
+
+      const areaW = 800;
+      const areaH = 600;
+      const numClusters = Math.max(4, Math.min(8, Math.floor(count / 15)));
+
+      for (let k = 0; k < numClusters; k++) {
+        const angle = (k / numClusters) * Math.PI * 2;
+        const radius = Math.min(areaW, areaH) * 0.32;
+        const cx = areaW * 0.46 + Math.cos(angle) * radius + (Math.random() - 0.5) * 30;
+        const cy = areaH * 0.5 + Math.sin(angle) * (radius * 0.72) + (Math.random() - 0.5) * 30;
+        
+        STATE.clusterHeads.push({
+          id: `ch-${k + 1}`,
+          clusterId: k,
+          x: Math.min(areaW - 60, Math.max(50, cx)),
+          y: Math.min(areaH - 50, Math.max(50, cy)),
+          z: 8,
+          color: CLUSTER_COLORS[k % CLUSTER_COLORS.length],
+          energy: (STATE.activeAlgo === 'leach' && STATE.round > 10) ? 0.0 : 18.8,
+          maxEnergy: 20.0,
+          isDead: STATE.activeAlgo === 'leach' && STATE.round > 10,
+          txRange: 140.0
+        });
+      }
+
+      for (let i = 0; i < count; i++) {
+        const cIdx = i % numClusters;
+        const ch = STATE.clusterHeads[cIdx];
+        
+        // Golden angle spiral distribution to prevent node clumping
+        const phi = 2.399963; // ~137.5 degrees
+        const spiralAngle = (i * phi) + (cIdx * 0.8);
+        const radiusFraction = Math.sqrt((Math.floor(i / numClusters) + 0.6) / (count / numClusters + 0.6));
+        const dist = 14 + radiusFraction * 72 + ((i * 7) % 9) - 4;
+
+        let nx = ch.x + Math.cos(spiralAngle) * dist;
+        let ny = ch.y + Math.sin(spiralAngle) * (dist * 0.85);
+
+        nx = Math.max(25, Math.min(680, nx));
+        ny = Math.max(25, Math.min(575, ny));
+
+        let isDead = false;
+        let nodeEnergy = 9.2 + ((i * 13) % 7) * 0.1;
+
+        if (STATE.activeAlgo === 'leach' && STATE.round > 12 && cIdx % 2 === 0) {
+          isDead = true;
+          nodeEnergy = 0.0;
+        } else if (STATE.activeAlgo === 'kmeans' && STATE.round > 25) {
+          const distToSink = Math.hypot(nx - STATE.sink.x, ny - STATE.sink.y);
+          if (distToSink < 180) { isDead = true; nodeEnergy = 0.0; }
+        }
+
+        STATE.nodes.push({
+          id: `node-${i + 1}`,
+          clusterId: cIdx,
+          chId: ch.id,
+          x: nx,
+          y: ny,
+          z: 2.0,
+          color: ch.color,
+          energy: isDead ? 0.0 : Number(nodeEnergy.toFixed(2)),
+          maxEnergy: 10.0,
+          isDead: isDead
+        });
+      }
+
+      initPhotons();
+    }
+
+    // ==========================================
+    // 2. THREE.JS 3D ENGINE
+    // ==========================================
+    let scene, camera, renderer, controls;
+    let chGroup, nodeGroup, beamGroup, ringGroup, sinkMesh, radarRing, hoverReticle, pinnedReticle;
+    const SCALE = 0.12;
+
+    function init3D() {
+      const container = document.getElementById('canvas3d-container');
+      const canvas = document.getElementById('canvas3d');
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x030712);
+      scene.fog = new THREE.FogExp2(0x030712, 0.008);
+
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+      camera.position.set(0, 75, 115);
+
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.maxPolarAngle = Math.PI / 2 - 0.05;
+      controls.minDistance = 20;
+      controls.maxDistance = 250;
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0x38bdf8, 1.2);
+      dirLight.position.set(50, 80, 50);
+      scene.add(dirLight);
+
+      const gridHelper = new THREE.GridHelper(130, 26, 0x06b6d4, 0x1e293b);
+      scene.add(gridHelper);
+
+      initSinkMesh();
+
+      chGroup = new THREE.Group();
+      nodeGroup = new THREE.Group();
+      beamGroup = new THREE.Group();
+      ringGroup = new THREE.Group();
+      scene.add(chGroup);
+      scene.add(nodeGroup);
+      scene.add(beamGroup);
+      scene.add(ringGroup);
+
+      // 3D Hover Reticle for instant visual feedback on hovered node
+      const reticleGeo = new THREE.RingGeometry(2.2, 2.7, 32);
+      const reticleMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
+      hoverReticle = new THREE.Mesh(reticleGeo, reticleMat);
+      hoverReticle.rotation.x = -Math.PI / 2;
+      hoverReticle.visible = false;
+      scene.add(hoverReticle);
+
+      // Pinned Reticle for locked selected node
+      const pinnedGeo = new THREE.RingGeometry(2.8, 3.4, 32);
+      const pinnedMat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
+      pinnedReticle = new THREE.Mesh(pinnedGeo, pinnedMat);
+      pinnedReticle.rotation.x = -Math.PI / 2;
+      pinnedReticle.visible = false;
+      scene.add(pinnedReticle);
+
+      generateNetworkTopology(STATE.nodeCount);
+      rebuild3DEntities();
+      setupRaycaster();
+
+      window.addEventListener('resize', onWindowResize);
+      animate3D();
+    }
+
+    function initSinkMesh() {
+      const sinkGroup = new THREE.Group();
+      const sx = (STATE.sink.x - 400) * SCALE;
+      const sy = STATE.sink.z * SCALE * 2;
+      const sz = (STATE.sink.y - 300) * SCALE;
+      sinkGroup.position.set(sx, sy, sz);
+
+      const baseGeo = new THREE.CylinderGeometry(3.2, 3.8, 1.2, 8);
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.2 });
+      const base = new THREE.Mesh(baseGeo, baseMat);
+      base.position.y = -sy + 0.6;
+      sinkGroup.add(base);
+
+      const towerGeo = new THREE.CylinderGeometry(0.5, 0.8, sy, 8);
+      const towerMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.8, roughness: 0.3 });
+      const tower = new THREE.Mesh(towerGeo, towerMat);
+      tower.position.y = -sy / 2 + 0.6;
+      sinkGroup.add(tower);
+
+      const orbGeo = new THREE.SphereGeometry(1.3, 24, 24);
+      const orbMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, emissive: 0x06b6d4, emissiveIntensity: 0.85 });
+      const orb = new THREE.Mesh(orbGeo, orbMat);
+      sinkGroup.add(orb);
+
+      const ringGeo = new THREE.RingGeometry(3.5, 4.2, 48);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+      radarRing = new THREE.Mesh(ringGeo, ringMat);
+      radarRing.rotation.x = -Math.PI / 2;
+      radarRing.position.y = -sy + 0.1;
+      sinkGroup.add(radarRing);
+
+      scene.add(sinkGroup);
+      sinkMesh = sinkGroup;
+    }
+
+    function rebuild3DEntities() {
+      while (chGroup.children.length > 0) chGroup.remove(chGroup.children[0]);
+      while (nodeGroup.children.length > 0) nodeGroup.remove(nodeGroup.children[0]);
+      while (ringGroup.children.length > 0) ringGroup.remove(ringGroup.children[0]);
+
+      // Cluster Heads
+      STATE.clusterHeads.forEach((ch) => {
+        const cx = (ch.x - 400) * SCALE;
+        const cy = ch.z * SCALE * 2;
+        const cz = (ch.y - 300) * SCALE;
+
+        const g = new THREE.Group();
+        g.position.set(cx, cy, cz);
+        g.userData = { isCH: true, entity: ch };
+
+        const color = ch.isDead ? 0x1e293b : ch.color;
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(1.3, 24, 24),
+          new THREE.MeshStandardMaterial({ color: color, emissive: ch.isDead ? 0x000000 : color, emissiveIntensity: ch.isDead ? 0 : 0.65 })
+        );
+        sphere.userData = { isCH: true, entity: ch };
+        g.add(sphere);
+
+        // Invisible large hit-box sphere for CH (radius 4.5) with transparent material for 100% reliable raycasting
+        const chHit = new THREE.Mesh(
+          new THREE.SphereGeometry(4.5, 8, 8),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0, depthWrite: false })
+        );
+        chHit.userData = { isCH: true, entity: ch };
+        g.add(chHit);
+
+        if (!ch.isDead) {
+          const halo = new THREE.Mesh(
+            new THREE.RingGeometry(1.5, 1.9, 24),
+            new THREE.MeshBasicMaterial({ color: ch.color, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+          );
+          halo.rotation.x = -Math.PI / 2;
+          g.add(halo);
+        }
+        chGroup.add(g);
+
+        if (STATE.showRings && !ch.isDead) {
+          const r = (ch.txRange || 140.0) * SCALE;
+          const tr = new THREE.Mesh(
+            new THREE.RingGeometry(r - 0.2, r, 48),
+            new THREE.MeshBasicMaterial({ color: ch.color, transparent: true, opacity: 0.18, side: THREE.DoubleSide })
+          );
+          tr.rotation.x = -Math.PI / 2;
+          tr.position.set(cx, 0.05, cz);
+          ringGroup.add(tr);
+        }
+      });
+
+      // Nodes
+      STATE.nodes.forEach((n) => {
+        const nx = (n.x - 400) * SCALE;
+        const ny = n.z * SCALE * 2;
+        const nz = (n.y - 300) * SCALE;
+
+        const g = new THREE.Group();
+        g.position.set(nx, ny, nz);
+        g.userData = { isNode: true, entity: n };
+
+        let ledColor = 0x10b981;
+        if (n.isDead) ledColor = 0x334155;
+        else if (n.energy < 3.0) ledColor = 0xf43f5e;
+        else if (n.energy < 6.5) ledColor = 0xf59e0b;
+
+        // Visible sensor sphere
+        const sMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.85, 16, 16),
+          new THREE.MeshStandardMaterial({ color: n.isDead ? 0x1e293b : n.color, metalness: 0.8, roughness: 0.2 })
+        );
+        sMesh.userData = { isNode: true, entity: n };
+        g.add(sMesh);
+
+        // Invisible large hit-box sphere (radius 3.6) with transparent material for instant mouse hover & click
+        const hitSphere = new THREE.Mesh(
+          new THREE.SphereGeometry(3.6, 8, 8),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0, depthWrite: false })
+        );
+        hitSphere.userData = { isNode: true, entity: n };
+        g.add(hitSphere);
+
+        const led = new THREE.Mesh(
+          new THREE.RingGeometry(0.95, 1.25, 16),
+          new THREE.MeshBasicMaterial({ color: ledColor, transparent: true, opacity: n.isDead ? 0.2 : 0.85, side: THREE.DoubleSide })
+        );
+        led.rotation.x = -Math.PI / 2;
+        g.add(led);
+
+        nodeGroup.add(g);
+      });
+
+      rebuildBeams();
+    }
+
+    function rebuildBeams() {
+      while (beamGroup.children.length > 0) beamGroup.remove(beamGroup.children[0]);
+      const sinkPos = new THREE.Vector3((STATE.sink.x - 400) * SCALE, STATE.sink.z * SCALE * 2, (STATE.sink.y - 300) * SCALE);
+
+      // Intra-cluster links
+      STATE.nodes.slice(0, 45).forEach((n) => {
+        const ch = STATE.clusterHeads[n.clusterId];
+        if (!ch || n.isDead) return;
+        const start = new THREE.Vector3((n.x - 400) * SCALE, n.z * SCALE * 2, (n.y - 300) * SCALE);
+        const end = new THREE.Vector3((ch.x - 400) * SCALE, ch.z * SCALE * 2, (ch.y - 300) * SCALE);
+        const line = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([start, end]),
+          new THREE.LineBasicMaterial({ color: n.color, transparent: true, opacity: 0.25 })
+        );
+        beamGroup.add(line);
+      });
+
+      // Inter-cluster beams
+      if (STATE.activeAlgo === 'leach') {
+        STATE.clusterHeads.forEach((ch) => {
+          const chPos = new THREE.Vector3((ch.x - 400) * SCALE, ch.z * SCALE * 2, (ch.y - 300) * SCALE);
+          const beam = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([chPos, sinkPos]),
+            new THREE.LineBasicMaterial({ color: 0xf43f5e, linewidth: 2, transparent: true, opacity: ch.isDead ? 0.05 : 0.85 })
+          );
+          beamGroup.add(beam);
+        });
+      } else if (STATE.activeAlgo === 'dqn') {
+        STATE.clusterHeads.forEach((ch, idx) => {
+          if (ch.isDead) return;
+          const chPos = new THREE.Vector3((ch.x - 400) * SCALE, ch.z * SCALE * 2, (ch.y - 300) * SCALE);
+          const distToSink = Math.hypot(ch.x - STATE.sink.x, ch.y - STATE.sink.y);
+          if (distToSink <= 140.0) {
+            beamGroup.add(new THREE.Line(
+              new THREE.BufferGeometry().setFromPoints([chPos, sinkPos]),
+              new THREE.LineBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.85 })
+            ));
+          } else {
+            const nextCh = STATE.clusterHeads[(idx + 1) % STATE.clusterHeads.length];
+            const nextPos = new THREE.Vector3((nextCh.x - 400) * SCALE, nextCh.z * SCALE * 2, (nextCh.y - 300) * SCALE);
+            beamGroup.add(new THREE.Line(
+              new THREE.BufferGeometry().setFromPoints([chPos, nextPos]),
+              new THREE.LineBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.75 })
+            ));
+          }
+        });
+      } else if (STATE.activeAlgo === 'qlearning') {
+        STATE.clusterHeads.forEach((ch, idx) => {
+          const chPos = new THREE.Vector3((ch.x - 400) * SCALE, ch.z * SCALE * 2, (ch.y - 300) * SCALE);
+          const nextCh = STATE.clusterHeads[(idx + 2) % STATE.clusterHeads.length];
+          const nextPos = new THREE.Vector3((nextCh.x - 400) * SCALE, nextCh.z * SCALE * 2, (nextCh.y - 300) * SCALE);
+          beamGroup.add(new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([chPos, nextPos]),
+            new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.65 })
+          ));
+        });
+      } else if (STATE.activeAlgo === 'kmeans') {
+        const bottleneckCH = STATE.clusterHeads[0];
+        const bottleneckPos = new THREE.Vector3((bottleneckCH.x - 400) * SCALE, bottleneckCH.z * SCALE * 2, (bottleneckCH.y - 300) * SCALE);
+        STATE.clusterHeads.forEach((ch, idx) => {
+          if (idx !== 0) {
+            const chPos = new THREE.Vector3((ch.x - 400) * SCALE, ch.z * SCALE * 2, (ch.y - 300) * SCALE);
+            beamGroup.add(new THREE.Line(
+              new THREE.BufferGeometry().setFromPoints([chPos, bottleneckPos]),
+              new THREE.LineBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.6 })
+            ));
+          }
+        });
+        beamGroup.add(new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([bottleneckPos, sinkPos]),
+          new THREE.LineBasicMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.9 })
+        ));
+      }
+    }
+
+    function initPhotons() {
+      STATE.activePhotons = [];
+      const sinkPos = new THREE.Vector3((STATE.sink.x - 400) * SCALE, STATE.sink.z * SCALE * 2, (STATE.sink.y - 300) * SCALE);
+
+      STATE.clusterHeads.forEach((ch, idx) => {
+        if (ch.isDead) return;
+        const chPos = new THREE.Vector3((ch.x - 400) * SCALE, ch.z * SCALE * 2, (ch.y - 300) * SCALE);
+        let targetPos = sinkPos;
+        if (STATE.activeAlgo === 'dqn' && Math.hypot(ch.x - STATE.sink.x, ch.y - STATE.sink.y) > 140) {
+          const nextCh = STATE.clusterHeads[(idx + 1) % STATE.clusterHeads.length];
+          targetPos = new THREE.Vector3((nextCh.x - 400) * SCALE, nextCh.z * SCALE * 2, (nextCh.y - 300) * SCALE);
+        }
+
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.38, 8, 8),
+          new THREE.MeshBasicMaterial({ color: STATE.activeAlgo === 'leach' ? 0xf43f5e : 0x38bdf8 })
+        );
+        scene.add(mesh);
+
+        STATE.activePhotons.push({
+          mesh: mesh,
+          start: chPos,
+          end: targetPos,
+          progress: (idx * 0.25) % 1.0,
+          speed: 0.015 * STATE.speed
+        });
+      });
+    }
+
+    let raycaster, mouse;
+    function setupRaycaster() {
+      raycaster = new THREE.Raycaster();
+      mouse = new THREE.Vector2();
+      const container = document.getElementById('canvas3d-container');
+      const tooltip = document.getElementById('node-tooltip');
+
+      // Helper to extract entity from any hit object
+      function extractEntity(intersects) {
+        if (!intersects || intersects.length === 0) return null;
+        for (let hit of intersects) {
+          let cur = hit.object;
+          while (cur && cur !== scene) {
+            if (cur.userData && cur.userData.entity) {
+              const ent = cur.userData.entity;
+              const isCH = cur.userData.isCH || (ent.id && String(ent.id).startsWith('ch-'));
+              return { entity: ent, isCH: !!isCH, hitPoint: hit.point };
+            }
+            cur = cur.parent;
+          }
+        }
+        return null;
+      }
+
+      // Hover Tooltip
+      container.addEventListener('mousemove', (e) => {
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects([...chGroup.children, ...nodeGroup.children], true);
+        const hit = extractEntity(intersects);
+
+        if (hit && hit.entity) {
+          const ent = hit.entity;
+          const isCH = hit.isCH;
+
+          if (hoverReticle) {
+            hoverReticle.position.set(
+              (ent.x - 400) * SCALE,
+              (isCH ? 8 : 2.0) * SCALE * 2 + 0.12,
+              (ent.y - 300) * SCALE
+            );
+            hoverReticle.material.color.setHex(isCH ? 0x06b6d4 : 0x38bdf8);
+            hoverReticle.visible = true;
+          }
+
+          document.getElementById('tt-id').innerText = isCH ? `Cluster Head ${ent.id}` : `Sensor Node ${ent.id}`;
+          document.getElementById('tt-role').innerText = isCH ? 'Cluster Head Centroid' : `Leaf Mote (Cluster #${ent.clusterId + 1})`;
+          document.getElementById('tt-energy').innerText = `${ent.energy.toFixed(2)} J`;
+          const distSink = Math.round(Math.hypot(ent.x - STATE.sink.x, ent.y - STATE.sink.y));
+          document.getElementById('tt-dist').innerText = `${distSink} m to Sink`;
+
+          if (isCH) {
+            document.getElementById('tt-nexthop').innerText = (STATE.activeAlgo === 'leach') 
+              ? 'Sink (500m Direct Single-Hop)' 
+              : 'Next Relay CH (DQN <= 140m)';
+          } else {
+            const ch = STATE.clusterHeads[ent.clusterId];
+            const distCh = ch ? Math.round(Math.hypot(ent.x - ch.x, ent.y - ch.y)) : 0;
+            document.getElementById('tt-nexthop').innerText = `CH-${ent.clusterId + 1} (${distCh}m Uplink)`;
+          }
+
+          tooltip.style.left = `${e.clientX - rect.left}px`;
+          tooltip.style.top = `${e.clientY - rect.top}px`;
+          tooltip.style.display = 'block';
+          return;
+        }
+        if (hoverReticle) hoverReticle.visible = false;
+        tooltip.style.display = 'none';
+      });
+
+      // Click to Pin Node Inspector
+      container.addEventListener('click', (e) => {
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects([...chGroup.children, ...nodeGroup.children], true);
+        const hit = extractEntity(intersects);
+
+        const pinCard = document.getElementById('pinned-node-card');
+        if (hit && hit.entity && pinCard) {
+          const ent = hit.entity;
+          const isCH = hit.isCH;
+
+          if (pinnedReticle) {
+            pinnedReticle.position.set(
+              (ent.x - 400) * SCALE,
+              (isCH ? 8 : 2.0) * SCALE * 2 + 0.14,
+              (ent.y - 300) * SCALE
+            );
+            pinnedReticle.material.color.setHex(isCH ? 0xf59e0b : 0x10b981);
+            pinnedReticle.visible = true;
+          }
+
+          document.getElementById('pin-id').innerText = isCH ? `Cluster Head ${ent.id}` : `Sensor Node ${ent.id}`;
+          document.getElementById('pin-role').innerText = isCH ? 'Cluster Head' : 'Sensor Mote';
+          document.getElementById('pin-cluster').innerText = isCH ? `CH Centroid #${ent.clusterId + 1}` : `Assigned: CH-${ent.clusterId + 1}`;
+          document.getElementById('pin-energy').innerText = `${ent.energy.toFixed(2)} J (${Math.round((ent.energy / ent.maxEnergy) * 100)}%)`;
+          const distSink = Math.round(Math.hypot(ent.x - STATE.sink.x, ent.y - STATE.sink.y));
+          document.getElementById('pin-dist').innerText = `${distSink} m`;
+
+          if (isCH) {
+            document.getElementById('pin-nexthop').innerText = (STATE.activeAlgo === 'leach') ? 'Sink (Direct 500m)' : 'Next Relay CH (DQN <= 140m)';
+          } else {
+            const ch = STATE.clusterHeads[ent.clusterId];
+            const distCh = ch ? Math.round(Math.hypot(ent.x - ch.x, ent.y - ch.y)) : 0;
+            document.getElementById('pin-nexthop').innerText = `CH-${ent.clusterId + 1} (${distCh}m)`;
+          }
+          pinCard.classList.remove('hidden');
+        }
+      });
+    }
+
+    function closePinnedNode() {
+      document.getElementById('pinned-node-card')?.classList.add('hidden');
+      if (pinnedReticle) pinnedReticle.visible = false;
+    }
+
+    let clock = new THREE.Clock();
+    function animate3D() {
+      requestAnimationFrame(animate3D);
+      const time = clock.getElapsedTime();
+
+      if (radarRing) {
+        const s = 1.0 + (time % 2.5) * 2.2;
+        radarRing.scale.set(s, s, s);
+        radarRing.material.opacity = Math.max(0, 0.7 - (time % 2.5) * 0.28);
+      }
+
+      if (hoverReticle && hoverReticle.visible) {
+        const s = 1.0 + 0.08 * Math.sin(time * 6);
+        hoverReticle.scale.set(s, s, s);
+      }
+
+      if (pinnedReticle && pinnedReticle.visible) {
+        const s = 1.0 + 0.12 * Math.sin(time * 4);
+        pinnedReticle.scale.set(s, s, s);
+      }
+
+      STATE.activePhotons.forEach((p) => {
+        p.progress += p.speed * (STATE.isRunning ? 1 : 0.15);
+        if (p.progress >= 1.0) p.progress = 0.0;
+        p.mesh.position.lerpVectors(p.start, p.end, p.progress);
+      });
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('canvas3d-container');
+      if (!container || !renderer || !camera) return;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    }
+
+    // ==========================================
+    // 3. GRAPH-WISE STATISTICS (CHART.JS)
+    // ==========================================
+    let chartEnergy, chartPdr, chartThroughput, chartLifetime, chartLatency, chartRadar;
+
+    // Custom Chart.js Plugin: Renders bold numerical value above each 3D bar
+    const barValuePlugin = {
+      id: 'barValuePlugin',
+      afterDatasetsDraw(chart) {
+        if (chart.config.type !== 'bar') return;
+        const { ctx } = chart;
+        ctx.save();
+        chart.data.datasets.forEach((dataset, i) => {
+          const meta = chart.getDatasetMeta(i);
+          meta.data.forEach((bar, index) => {
+            const val = dataset.data[index];
+            if (val === undefined || val === null) return;
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 11px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            let str = `${val}`;
+            if (chart.canvas.id === 'chart-pdr') str = `${val}%`;
+            else if (chart.canvas.id === 'chart-energy') str = `${val}J`;
+            else if (chart.canvas.id === 'chart-throughput') str = `${val}k`;
+            else if (chart.canvas.id === 'chart-lifetime') str = val >= 1000 ? `${(val/1000).toFixed(1)}k` : `${val}`;
+            else if (chart.canvas.id === 'chart-latency') str = `${val}ms`;
+            ctx.fillText(str, bar.x, bar.y - 4);
+          });
+        });
+        ctx.restore();
+      }
+    };
+    if (window.Chart) Chart.register(barValuePlugin);
+
+    function create3DBarGradients(ctx, h = 190) {
+      // 1. DQN+DCAE (Cyan 3D Pillar)
+      const gDqn = ctx.createLinearGradient(0, 0, 0, h);
+      gDqn.addColorStop(0, '#67e8f9');
+      gDqn.addColorStop(0.35, '#06b6d4');
+      gDqn.addColorStop(1, '#083344');
+
+      // 2. LEACH (Rose 3D Pillar)
+      const gLeach = ctx.createLinearGradient(0, 0, 0, h);
+      gLeach.addColorStop(0, '#fda4af');
+      gLeach.addColorStop(0.35, '#f43f5e');
+      gLeach.addColorStop(1, '#4c0519');
+
+      // 3. Q-Learning (Amber 3D Pillar)
+      const gQl = ctx.createLinearGradient(0, 0, 0, h);
+      gQl.addColorStop(0, '#fde68a');
+      gQl.addColorStop(0.35, '#f59e0b');
+      gQl.addColorStop(1, '#451a03');
+
+      // 4. K-Means (Purple 3D Pillar)
+      const gKm = ctx.createLinearGradient(0, 0, 0, h);
+      gKm.addColorStop(0, '#d8b4fe');
+      gKm.addColorStop(0.35, '#a855f7');
+      gKm.addColorStop(1, '#3b0764');
+
+      return [gDqn, gLeach, gQl, gKm];
+    }
+
+    const chartGlobalOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#38bdf8',
+          bodyFont: { family: 'JetBrains Mono', size: 11 },
+          titleFont: { family: 'JetBrains Mono', size: 11 },
+          displayColors: false
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: '#cbd5e1', font: { family: 'JetBrains Mono', size: 9.5 } }
+        },
+        y: {
+          grace: '18%',
+          grid: { color: 'rgba(51, 65, 85, 0.25)' },
+          ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 9.5 } }
+        }
+      }
+    };
+
+    function initAllCharts() {
+      const barLabels = ['DQN+DCAE (Our)', 'LEACH', 'Q-Learning', 'K-Means'];
+
+      // 1. Energy Bar Chart (Avg Joules Consumed - Lower is Better)
+      const ctxEnergy = document.getElementById('chart-energy').getContext('2d');
+      chartEnergy = new Chart(ctxEnergy, {
+        type: 'bar',
+        data: {
+          labels: barLabels,
+          datasets: [{
+            data: [8.42, 24.80, 14.60, 18.20],
+            backgroundColor: create3DBarGradients(ctxEnergy),
+            borderRadius: 6,
+            borderWidth: 1.5,
+            borderColor: ['#22d3ee', '#fb7185', '#fbbf24', '#c084fc']
+          }]
+        },
+        options: {
+          ...chartGlobalOptions,
+          scales: {
+            ...chartGlobalOptions.scales,
+            y: { ...chartGlobalOptions.scales.y, title: { display: true, text: 'Joules (J)', color: '#64748b', font: { size: 9 } } }
+          }
+        }
+      });
+
+      // 2. PDR Bar Chart (Delivery Ratio % - Higher is Better)
+      const ctxPdr = document.getElementById('chart-pdr').getContext('2d');
+      chartPdr = new Chart(ctxPdr, {
+        type: 'bar',
+        data: {
+          labels: barLabels,
+          datasets: [{
+            data: [98.4, 38.2, 82.5, 71.8],
+            backgroundColor: create3DBarGradients(ctxPdr),
+            borderRadius: 6,
+            borderWidth: 1.5,
+            borderColor: ['#22d3ee', '#fb7185', '#fbbf24', '#c084fc']
+          }]
+        },
+        options: {
+          ...chartGlobalOptions,
+          scales: {
+            ...chartGlobalOptions.scales,
+            y: { ...chartGlobalOptions.scales.y, max: 100, title: { display: true, text: 'PDR (%)', color: '#64748b', font: { size: 9 } } }
+          }
+        }
+      });
+
+      // 3. Throughput Bar Chart (kbps - Higher is Better)
+      const ctxThroughput = document.getElementById('chart-throughput').getContext('2d');
+      chartThroughput = new Chart(ctxThroughput, {
+        type: 'bar',
+        data: {
+          labels: barLabels,
+          datasets: [{
+            data: [318.5, 85.0, 210.0, 165.0],
+            backgroundColor: create3DBarGradients(ctxThroughput),
+            borderRadius: 6,
+            borderWidth: 1.5,
+            borderColor: ['#22d3ee', '#fb7185', '#fbbf24', '#c084fc']
+          }]
+        },
+        options: {
+          ...chartGlobalOptions,
+          scales: {
+            ...chartGlobalOptions.scales,
+            y: { ...chartGlobalOptions.scales.y, title: { display: true, text: 'kbps', color: '#64748b', font: { size: 9 } } }
+          }
+        }
+      });
+
+      // 4. Lifetime Bar Chart (Rounds to First Node Death - Higher is Better)
+      const ctxLifetime = document.getElementById('chart-lifetime').getContext('2d');
+      chartLifetime = new Chart(ctxLifetime, {
+        type: 'bar',
+        data: {
+          labels: barLabels,
+          datasets: [{
+            data: [3420, 14, 1280, 890],
+            backgroundColor: create3DBarGradients(ctxLifetime),
+            borderRadius: 6,
+            borderWidth: 1.5,
+            borderColor: ['#22d3ee', '#fb7185', '#fbbf24', '#c084fc']
+          }]
+        },
+        options: {
+          ...chartGlobalOptions,
+          scales: {
+            ...chartGlobalOptions.scales,
+            y: { ...chartGlobalOptions.scales.y, title: { display: true, text: 'Rounds to FND', color: '#64748b', font: { size: 9 } } }
+          }
+        }
+      });
+
+      // 5. Latency Bar Chart (Delay in ms - Lower is Better)
+      const ctxLatency = document.getElementById('chart-latency').getContext('2d');
+      chartLatency = new Chart(ctxLatency, {
+        type: 'bar',
+        data: {
+          labels: barLabels,
+          datasets: [{
+            data: [12.4, 48.6, 28.5, 22.1],
+            backgroundColor: create3DBarGradients(ctxLatency),
+            borderRadius: 6,
+            borderWidth: 1.5,
+            borderColor: ['#22d3ee', '#fb7185', '#fbbf24', '#c084fc']
+          }]
+        },
+        options: {
+          ...chartGlobalOptions,
+          scales: {
+            ...chartGlobalOptions.scales,
+            y: { ...chartGlobalOptions.scales.y, title: { display: true, text: 'Delay (ms)', color: '#64748b', font: { size: 9 } } }
+          }
+        }
+      });
+
+      // 6. Radar Chart (Multi-Objective)
+      chartRadar = new Chart(document.getElementById('chart-radar').getContext('2d'), {
+        type: 'radar',
+        data: {
+          labels: ['Energy', 'PDR', 'Throughput', 'Lifetime', 'Hot-Spot Avoid'],
+          datasets: [
+            { label: 'DQN+DCAE', data: [96, 98, 92, 95, 94], borderColor: '#06b6d4', backgroundColor: 'rgba(6, 182, 212, 0.25)', borderWidth: 2 },
+            { label: 'LEACH', data: [25, 38, 30, 15, 20], borderColor: '#f43f5e', backgroundColor: 'rgba(244, 63, 94, 0.1)', borderWidth: 1.5 },
+            { label: 'Q-Learning', data: [65, 82, 70, 60, 55], borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderWidth: 1.5 },
+            { label: 'K-Means', data: [50, 71, 58, 45, 35], borderColor: '#a855f7', backgroundColor: 'rgba(168, 85, 247, 0.1)', borderWidth: 1.5 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            r: {
+              angleLines: { color: 'rgba(51, 65, 85, 0.4)' },
+              grid: { color: 'rgba(51, 65, 85, 0.4)' },
+              pointLabels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 8 } },
+              ticks: { display: false, max: 100 }
+            }
+          }
+        }
+      });
+    }
+
+    // ==========================================
+    // 4. DYNAMIC METRICS CALCULATION ENGINE
+    // ==========================================
+    function calculateDynamicStats(N) {
+      const ratio = N / 100.0;
+      
+      // 1. Proposed: DQN + DCAE
+      // Denser nodes -> shorter hops -> energy efficiency per hop, throughput scales
+      const dqn_energy = Number((6.30 + 2.12 * Math.pow(ratio, 0.35)).toFixed(2));
+      const dqn_pdr = Number(Math.min(99.4, Math.max(94.5, 99.1 - 0.7 * ratio)).toFixed(1));
+      const dqn_throughput = Number((N * 3.185 * (dqn_pdr / 98.4)).toFixed(1));
+      const dqn_latency = Number((8.2 + 4.2 * Math.pow(ratio, 0.55)).toFixed(1));
+      const dqn_dead = 0;
+
+      // 2. LEACH:
+      // Catastrophic scaling: more CHs trying to transmit 500m direct to sink -> d^4 multipath + collisions
+      const leach_energy = Number((18.50 + 6.30 * Math.pow(ratio, 0.65)).toFixed(2));
+      const leach_pdr = Number(Math.max(6.0, 48.0 - 10.0 * ratio).toFixed(1));
+      const leach_throughput = Number(Math.min(115.0, 50.0 + 35.0 * Math.tanh(ratio * 1.1)).toFixed(1));
+      const leach_latency = Number((30.0 + 18.6 * ratio).toFixed(1));
+      const leach_dead = Math.min(N, Math.round(N * Math.min(0.95, 0.65 + 0.15 * ratio)));
+
+      // 3. Tabular Q-Learning:
+      // State explosion |S| x |A| > 10^6, routing loops, slower convergence
+      const ql_energy = Number((10.50 + 4.10 * Math.pow(ratio, 0.5)).toFixed(2));
+      const ql_pdr = Number(Math.max(52.0, 87.0 - 4.5 * ratio).toFixed(1));
+      const ql_throughput = Number((N * 2.10 * (ql_pdr / 82.5)).toFixed(1));
+      const ql_latency = Number((16.0 + 12.5 * ratio).toFixed(1));
+      const ql_dead = Math.min(N, Math.round(N * Math.min(0.60, 0.12 + 0.08 * ratio)));
+
+      // 4. K-Means + Greedy:
+      // Severe forwarding hot-spot: all N nodes funnel through nodes nearest to sink
+      const km_energy = Number((12.80 + 5.40 * Math.pow(ratio, 0.55)).toFixed(2));
+      const km_pdr = Number(Math.max(40.0, 78.5 - 6.8 * ratio).toFixed(1));
+      const km_throughput = Number((N * 1.65 * (km_pdr / 71.8)).toFixed(1));
+      const km_latency = Number((14.0 + 8.1 * ratio).toFixed(1));
+      const km_dead = Math.min(N, Math.round(N * Math.min(0.70, 0.22 + 0.12 * ratio)));
+
+      return {
+        dqn: { energy: dqn_energy, pdr: dqn_pdr, throughput: dqn_throughput, latency: dqn_latency, dead: dqn_dead, deadPercent: 0.0 },
+        leach: { energy: leach_energy, pdr: leach_pdr, throughput: leach_throughput, latency: leach_latency, dead: leach_dead, deadPercent: Number(((leach_dead / N) * 100).toFixed(1)) },
+        qlearning: { energy: ql_energy, pdr: ql_pdr, throughput: ql_throughput, latency: ql_latency, dead: ql_dead, deadPercent: Number(((ql_dead / N) * 100).toFixed(1)) },
+        kmeans: { energy: km_energy, pdr: km_pdr, throughput: km_throughput, latency: km_latency, dead: km_dead, deadPercent: Number(((km_dead / N) * 100).toFixed(1)) }
+      };
+    }
+
+    function updateAllStatistics(N) {
+      STATE.nodeCount = N;
+      const stats = calculateDynamicStats(N);
+      STATE.stats = stats;
+
+      // Update Top KPI Counters
+      const s = stats[STATE.activeAlgo];
+      const elEnergy = document.getElementById('kpi-energy');
+      const elPdr = document.getElementById('kpi-pdr');
+      const elThroughput = document.getElementById('kpi-throughput');
+      const elLatency = document.getElementById('kpi-latency');
+      const elDead = document.getElementById('kpi-dead');
+
+      if (elEnergy) elEnergy.innerText = `${s.energy.toFixed(2)} J`;
+      if (elPdr) elPdr.innerText = `${s.pdr.toFixed(1)} %`;
+      if (elThroughput) elThroughput.innerText = `${s.throughput.toFixed(1)} kbps`;
+      if (elLatency) elLatency.innerText = `${s.latency.toFixed(1)} ms`;
+      if (elDead) elDead.innerText = `${s.dead} (${s.deadPercent.toFixed(1)}%)`;
+
+      const thLabel = document.getElementById('th-nodes-label');
+      if (thLabel) thLabel.innerText = N;
+
+      const rounds = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+      const ratio = N / 100.0;
+
+      // Update dynamic comparative badges
+      const bEnergy = document.getElementById('badge-energy');
+      if (bEnergy) bEnergy.innerText = `${((1 - stats.dqn.energy / stats.leach.energy) * 100).toFixed(1)}% Less Energy`;
+
+      const bPdr = document.getElementById('badge-pdr');
+      if (bPdr) bPdr.innerText = `${(stats.dqn.pdr / stats.leach.pdr).toFixed(1)}x Higher PDR`;
+
+      const bTh = document.getElementById('badge-throughput');
+      if (bTh) bTh.innerText = `${(stats.dqn.throughput / stats.leach.throughput).toFixed(1)}x Higher Data`;
+
+      const bLife = document.getElementById('badge-lifetime');
+      const leach_fnd = Math.max(6, Math.round(18 - ratio * 4));
+      if (bLife) bLife.innerText = `${Math.round(3420 / leach_fnd)}x Longer Life`;
+
+      const bLat = document.getElementById('badge-latency');
+      if (bLat) bLat.innerText = `${((1 - stats.dqn.latency / stats.leach.latency) * 100).toFixed(1)}% Lower Delay`;
+
+      // 1. Update Energy Bar Chart
+      if (chartEnergy) {
+        chartEnergy.data.datasets[0].data = [
+          stats.dqn.energy,
+          stats.leach.energy,
+          stats.qlearning.energy,
+          stats.kmeans.energy
+        ];
+        chartEnergy.update();
+      }
+
+      // 2. Update PDR Bar Chart
+      if (chartPdr) {
+        chartPdr.data.datasets[0].data = [
+          stats.dqn.pdr,
+          stats.leach.pdr,
+          stats.qlearning.pdr,
+          stats.kmeans.pdr
+        ];
+        chartPdr.update();
+      }
+
+      // 3. Update Throughput Bar Chart for Selected N Nodes
+      if (chartThroughput) {
+        chartThroughput.data.datasets[0].data = [
+          stats.dqn.throughput,
+          stats.leach.throughput,
+          stats.qlearning.throughput,
+          stats.kmeans.throughput
+        ];
+        chartThroughput.update();
+      }
+
+      // 4. Update Lifetime Bar Chart (Rounds to First Node Death)
+      if (chartLifetime) {
+        const leach_fnd = Math.max(6, Math.round(18 - ratio * 4));
+        const ql_fnd = Math.max(400, Math.round(1450 - ratio * 200));
+        const km_fnd = Math.max(250, Math.round(980 - ratio * 150));
+        chartLifetime.data.datasets[0].data = [
+          3420,
+          leach_fnd,
+          ql_fnd,
+          km_fnd
+        ];
+        chartLifetime.update();
+      }
+
+      // 5. Update Latency Bar Chart
+      if (chartLatency) {
+        chartLatency.data.datasets[0].data = [
+          stats.dqn.latency,
+          stats.leach.latency,
+          stats.qlearning.latency,
+          stats.kmeans.latency
+        ];
+        chartLatency.update();
+      }
+
+      // 4. Update Radar Chart
+      if (chartRadar) {
+        chartRadar.data.datasets[0].data = [
+          Math.min(99, Math.round(98 - (ratio - 1) * 3)),
+          Math.round(stats.dqn.pdr),
+          Math.min(98, Math.round(75 + ratio * 15)),
+          Math.round(95),
+          Math.round(94)
+        ];
+        chartRadar.data.datasets[1].data = [
+          Math.max(10, Math.round(28 - ratio * 8)),
+          Math.round(stats.leach.pdr),
+          Math.max(15, Math.round(40 - ratio * 10)),
+          Math.max(5, Math.round(18 - ratio * 6)),
+          Math.round(20)
+        ];
+        chartRadar.data.datasets[2].data = [
+          Math.max(35, Math.round(68 - ratio * 6)),
+          Math.round(stats.qlearning.pdr),
+          Math.min(85, Math.round(55 + ratio * 12)),
+          Math.max(25, Math.round(65 - ratio * 12)),
+          Math.round(55)
+        ];
+        chartRadar.data.datasets[3].data = [
+          Math.max(30, Math.round(55 - ratio * 8)),
+          Math.round(stats.kmeans.pdr),
+          Math.min(75, Math.round(45 + ratio * 10)),
+          Math.max(20, Math.round(50 - ratio * 12)),
+          Math.max(15, Math.round(38 - ratio * 8))
+        ];
+        chartRadar.update();
+      }
+    }
+
+    function onNodeTyping(rawVal) {
+      const val = parseInt(rawVal, 10);
+      if (!isNaN(val) && val >= 10 && val <= 500) {
+        STATE.nodeCount = val;
+        generateNetworkTopology(val);
+        rebuild3DEntities();
+        updateAllStatistics(val);
+      }
+    }
+
+    function setQuickNodes(num) {
+      const input = document.getElementById('input-node-count');
+      if (input) input.value = num;
+      applyNodeInput(true);
+    }
+
+    function applyNodeInput(forceClamp = false) {
+      const input = document.getElementById('input-node-count');
+      let val = parseInt(input.value, 10);
+      if (isNaN(val)) val = 100;
+      if (forceClamp) {
+        if (val < 10) val = 10;
+        if (val > 500) val = 500;
+        input.value = val;
+      }
+      STATE.nodeCount = val;
+      generateNetworkTopology(val);
+      rebuild3DEntities();
+      updateAllStatistics(val);
+    }
+
+    function handleStartClick() {
+      applyNodeInput(true);
+      togglePlayPause();
+    }
+
+    function selectAlgorithm(algoKey) {
+      STATE.activeAlgo = algoKey;
+      document.querySelectorAll('#algo-dqn, #algo-leach, #algo-qlearning, #algo-kmeans').forEach(b => {
+        b.className = 'flex items-center gap-1.5 px-3 py-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition';
+      });
+      const activeBtn = document.getElementById(`algo-${algoKey}`);
+      if (activeBtn) {
+        if (algoKey === 'dqn') activeBtn.className = 'flex items-center gap-1.5 px-3 py-1 rounded bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/40 transition';
+        else if (algoKey === 'leach') activeBtn.className = 'flex items-center gap-1.5 px-3 py-1 rounded bg-rose-600/30 text-rose-300 font-bold border border-rose-500/40 transition';
+        else if (algoKey === 'qlearning') activeBtn.className = 'flex items-center gap-1.5 px-3 py-1 rounded bg-amber-600/30 text-amber-300 font-bold border border-amber-500/40 transition';
+        else if (algoKey === 'kmeans') activeBtn.className = 'flex items-center gap-1.5 px-3 py-1 rounded bg-purple-600/30 text-purple-300 font-bold border border-purple-500/40 transition';
+      }
+
+      generateNetworkTopology(STATE.nodeCount);
+      rebuild3DEntities();
+      updateAllStatistics(STATE.nodeCount);
+    }
+
+    let simInterval = null;
+    function togglePlayPause() {
+      STATE.isRunning = !STATE.isRunning;
+      const startText = document.getElementById('start-text');
+      const startBtn = document.getElementById('btn-start');
+      const startIcon = document.getElementById('start-icon');
+
+      if (STATE.isRunning) {
+        if (startText) startText.innerText = 'PAUSE';
+        if (startBtn) {
+          startBtn.classList.replace('bg-emerald-600', 'bg-amber-600');
+          startBtn.classList.replace('hover:bg-emerald-500', 'hover:bg-amber-500');
+        }
+        if (startIcon) startIcon.setAttribute('data-lucide', 'pause');
+        simInterval = setInterval(stepSingleRound, 1000 / STATE.speed);
+      } else {
+        if (startText) startText.innerText = 'START';
+        if (startBtn) {
+          startBtn.classList.replace('bg-amber-600', 'bg-emerald-600');
+          startBtn.classList.replace('hover:bg-amber-500', 'hover:bg-emerald-500');
+        }
+        if (startIcon) startIcon.setAttribute('data-lucide', 'play');
+        clearInterval(simInterval);
+        simInterval = null;
+      }
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function stepSingleRound() {
+      STATE.round += 1;
+      document.getElementById('overlay-round').innerText = `#${STATE.round}`;
+      document.getElementById('overlay-packets').innerText = Math.floor(18 + Math.random() * 25);
+
+      // Dynamically tick residual energy down per round
+      const s = STATE.stats[STATE.activeAlgo];
+      if (s) {
+        const decayPerRound = s.energy / 50.0;
+        const liveEnergy = Math.max(0.1, 20.0 - (STATE.round * decayPerRound));
+        const elEnergy = document.getElementById('kpi-energy');
+        if (elEnergy) elEnergy.innerText = `${liveEnergy.toFixed(2)} J`;
+
+        if (STATE.activeAlgo === 'leach') {
+          const deadCount = Math.min(STATE.nodeCount, Math.round(STATE.nodeCount * Math.min(1.0, (STATE.round / 18.0))));
+          const elDead = document.getElementById('kpi-dead');
+          if (elDead) elDead.innerText = `${deadCount} (${((deadCount / STATE.nodeCount) * 100).toFixed(1)}%)`;
+        }
+      }
+
+      if (STATE.activeAlgo === 'leach' && STATE.round === 12) {
+        rebuild3DEntities();
+      }
+    }
+
+    function resetSimulation() {
+      STATE.round = 1;
+      document.getElementById('overlay-round').innerText = '#1';
+      updateAllStatistics(STATE.nodeCount);
+      selectAlgorithm('dqn');
+      if (STATE.isRunning) togglePlayPause();
+    }
+
+    function setCameraView(preset) {
+      if (preset === 'orbit') {
+        camera.position.set(0, 75, 115);
+        controls.target.set(0, 0, 0);
+      } else if (preset === 'top') {
+        camera.position.set(0, 140, 0.1);
+        controls.target.set(0, 0, 0);
+      }
+      controls.update();
+    }
+
+    function toggleTransmissionRings() {
+      STATE.showRings = !STATE.showRings;
+      const btn = document.getElementById('btn-toggle-rings');
+      if (STATE.showRings) {
+        btn.classList.add('bg-cyan-500/20', 'text-cyan-300');
+        rebuild3DEntities();
+      } else {
+        btn.classList.remove('bg-cyan-500/20', 'text-cyan-300');
+        while (ringGroup.children.length > 0) ringGroup.remove(ringGroup.children[0]);
+      }
+    }
+
+    // Modal Helpers
+    function openModal(id) { document.getElementById(id)?.classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id)?.classList.add('hidden'); }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('#papers-modal, #qa-modal').forEach(m => m.classList.add('hidden'));
+      }
+    });
+
+    // Papers table population
+    const PAPERS_DATABASE = [
+      { title: '06779352_IACC_Multi_LEACH.pdf', cat: 'leach', algo: 'Multi-Hop LEACH', flaw: 'Static hop heuristic; lacks energy balancing; dies in 25 rounds.', solution: 'Continuous DQN dynamically balances multi-hop load.' },
+      { title: 'A Deep RL-Based Routing Protocol for WSNs.pdf', cat: 'rl', algo: 'DQN Routing', flaw: 'Assumed flat network without clustering; causes broadcast flooding.', solution: 'Dual-stage architecture offloads DQN to gateway and pairs with DCAE.' },
+      { title: 'Deep Clustering via Autoencoders in Sensor Networks.pdf', cat: 'ae', algo: 'Deep Autoencoder', flaw: 'Stopped at cluster formation; zero multi-hop routing.', solution: 'Coupled DCAE with Stage 2 Continuous 7D DQN.' },
+      { title: 'Q-Learning Guided Dynamic Routing for IoT.pdf', cat: 'rl', algo: 'Tabular Q-Routing', flaw: 'State-space explosion (>10^6 states). Lookup fails on 50+ nodes.', solution: 'Continuous 7D neural function approximator replaces tables.' },
+      { title: 'A Modular Framework for ML Routing in NS-3.pdf', cat: 'ns3', algo: 'NS-3 802.11/802.15.4', flaw: 'Proved mathematical simulators overestimate PDR due to zero MAC contention.', solution: 'Validated with discrete-event 802.11n CSMA/CA MAC in NS-3.' }
+    ];
+
+    function populatePapersTable(filter = 'all', query = '') {
+      const tbody = document.getElementById('papers-table-body');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      PAPERS_DATABASE.filter(p => (filter === 'all' || p.cat === filter) && (query === '' || p.title.toLowerCase().includes(query.toLowerCase()))).forEach(p => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-900/60 transition';
+        tr.innerHTML = `
+          <td class="p-2 font-bold text-cyan-300">${p.title}</td>
+          <td class="p-2 text-slate-400 uppercase">${p.cat}</td>
+          <td class="p-2 text-white">${p.algo}</td>
+          <td class="p-2 text-rose-300">${p.flaw}</td>
+          <td class="p-2 text-emerald-300">${p.solution}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterPapers(cat) {
+      document.querySelectorAll('.paper-btn').forEach(b => b.className = 'paper-btn px-2 py-0.5 text-xs font-mono rounded text-slate-400 hover:bg-slate-800');
+      document.querySelector(`.paper-btn[data-cat="${cat}"]`)?.classList.replace('text-slate-400', 'bg-cyan-600 text-white font-bold');
+      populatePapersTable(cat, document.getElementById('paper-search')?.value || '');
+    }
+
+    function searchPapers(q) {
+      const active = document.querySelector('.paper-btn.bg-cyan-600')?.getAttribute('data-cat') || 'all';
+      populatePapersTable(active, q);
+    }
+
+    // ==========================================
+    // 5. DOM LOAD INITIALIZATION
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide) lucide.createIcons();
+      init3D();
+      initAllCharts();
+      updateAllStatistics(STATE.nodeCount);
+      populatePapersTable('all', '');
+    });
+  </script>
+</body>
+</html>
